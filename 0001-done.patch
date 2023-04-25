@@ -1,0 +1,246 @@
+From a4745f881d25f191cd7a474af2b276e5ecda3335 Mon Sep 17 00:00:00 2001
+From: Muhammad Zakaria <mhdzakaria3602gmail.com>
+Date: Sat, 22 Apr 2023 22:50:58 -0700
+Subject: [PATCH] done
+
+completed necessary work
+---
+ .vscode/settings.json  |  3 +++
+ datafeed/server3.py    |  1 +
+ package-lock.json      | 16 +++++++-----
+ src/DataManipulator.ts | 47 +++++++++++++++++++++++------------
+ src/DataStreamer.ts    | 15 ++++++-----
+ src/Graph.tsx          | 56 +++++++++++++++++++++++-------------------
+ 6 files changed, 85 insertions(+), 53 deletions(-)
+ create mode 100644 .vscode/settings.json
+
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+new file mode 100644
+index 0000000..a6735e5
+--- /dev/null
++++ b/.vscode/settings.json
+@@ -0,0 +1,3 @@
++{
++    "python.analysis.typeCheckingMode": "off"
++}
+\ No newline at end of file
+diff --git a/datafeed/server3.py b/datafeed/server3.py
+index 2de4e28..263b486 100644
+--- a/datafeed/server3.py
++++ b/datafeed/server3.py
+@@ -149,6 +149,7 @@ def generate_csv():
+             if t > MARKET_OPEN + SIM_LENGTH:
+                 break
+             writer.writerow([t, stock, side, order, size])
++    
+ 
+ def read_csv():
+     """ Read a CSV or order history into a list. """
+diff --git a/package-lock.json b/package-lock.json
+index 8135a72..e5cb409 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -4408,9 +4408,9 @@
+       }
+     },
+     "node_modules/caniuse-lite": {
+-      "version": "1.0.30001373",
+-      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001373.tgz",
+-      "integrity": "sha512-pJYArGHrPp3TUqQzFYRmP/lwJlj8RCbVe3Gd3eJQkAV8SAC6b19XS9BjMvRdvaS8RMkaTN8ZhoHP6S1y8zzwEQ==",
++      "version": "1.0.30001481",
++      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001481.tgz",
++      "integrity": "sha512-KCqHwRnaa1InZBtqXzP98LPg0ajCVujMKjqKDhZEthIpAsJl/YEIa3YvXjGXPVqzZVguccuu7ga9KOE1J9rKPQ==",
+       "funding": [
+         {
+           "type": "opencollective",
+@@ -4419,6 +4419,10 @@
+         {
+           "type": "tidelift",
+           "url": "https://tidelift.com/funding/github/npm/caniuse-lite"
++        },
++        {
++          "type": "github",
++          "url": "https://github.com/sponsors/ai"
+         }
+       ]
+     },
+@@ -23720,9 +23724,9 @@
+       }
+     },
+     "caniuse-lite": {
+-      "version": "1.0.30001373",
+-      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001373.tgz",
+-      "integrity": "sha512-pJYArGHrPp3TUqQzFYRmP/lwJlj8RCbVe3Gd3eJQkAV8SAC6b19XS9BjMvRdvaS8RMkaTN8ZhoHP6S1y8zzwEQ=="
++      "version": "1.0.30001481",
++      "resolved": "https://registry.npmjs.org/caniuse-lite/-/caniuse-lite-1.0.30001481.tgz",
++      "integrity": "sha512-KCqHwRnaa1InZBtqXzP98LPg0ajCVujMKjqKDhZEthIpAsJl/YEIa3YvXjGXPVqzZVguccuu7ga9KOE1J9rKPQ=="
+     },
+     "capture-exit": {
+       "version": "1.2.0",
+diff --git a/src/DataManipulator.ts b/src/DataManipulator.ts
+index 7f62295..310e104 100644
+--- a/src/DataManipulator.ts
++++ b/src/DataManipulator.ts
+@@ -1,20 +1,35 @@
+ import { ServerRespond } from './DataStreamer';
+ 
+-export interface Row {
+-  stock: string,
+-  top_ask_price: number,
+-  timestamp: Date,
+-}
++ export interface Row {
++   price_abc: number,    // (ask + bid) / 2
++   price_def: number,
++   ratio: number,        // price ABC / price DEF
++   timestamp: Date,      // data timestamp for X axis
++   upper_bound: number,  // + 0.05
++   lower_bound: number,  // - 0.05
++   trigger_alert: number | undefined,
++   
++ }
+ 
+ 
+-export class DataManipulator {
+-  static generateRow(serverResponds: ServerRespond[]) {
+-    return serverResponds.map((el: any) => {
+-      return {
+-        stock: el.stock,
+-        top_ask_price: el.top_ask && el.top_ask.price || 0,
+-        timestamp: el.timestamp,
+-      };
+-    })
+-  }
+-}
++ export class DataManipulator {
++   static generateRow(serverResponds: ServerRespond[]): Row {
++     const priceABC = (serverResponds[0].top_ask.price + serverResponds[0].top_bid.price)/2;
++     const priceDEF = (serverResponds[1].top_ask.price + serverResponds[1].top_bid.price)/2;
++     const ratio = priceABC / priceDEF;
++     const upper_bound = 1 + 0.01;
++     const lower_bound = 1 - 0.01;
++     return {
++       price_abc: priceABC,
++
++       price_def: priceDEF,
++       ratio,
++       timestamp: serverResponds[0].timestamp > serverResponds[1].timestamp ?
++                   serverResponds[0].timestamp : serverResponds[1].timestamp,
++       upper_bound: upper_bound,
++       lower_bound: lower_bound,
++       trigger_alert: (ratio > upper_bound || ratio < lower_bound ) ? ratio : undefined,
++ 
++       };
++   }
++ }
+diff --git a/src/DataStreamer.ts b/src/DataStreamer.ts
+index 9d9eca7..0f36e3a 100644
+--- a/src/DataStreamer.ts
++++ b/src/DataStreamer.ts
+@@ -2,12 +2,15 @@ export interface Order {
+   price: number,
+   size: number,
+ }
+-export interface ServerRespond {
+-  stock: string,
+-  top_bid: Order,
+-  top_ask: Order,
+-  timestamp: Date,
+-}
++ export interface Row {
++   price_abc: number,    // (ask + bid) / 2
++   price_def: number,
++   ratio: number,        // price ABC / price DEF
++   timestamp: Date,      // data timestamp for X axis
++   upper_bound: number,  // + 0.05
++   lower_bound: number,  // - 0.05
++   trigger_alert: number | undefined,
++ }
+ 
+ class DataStreamer {
+   static API_URL: string = 'http://localhost:8080/query?id=1';
+diff --git a/src/Graph.tsx b/src/Graph.tsx
+index 277797d..12ac500 100644
+--- a/src/Graph.tsx
++++ b/src/Graph.tsx
+@@ -4,6 +4,7 @@ import { ServerRespond } from './DataStreamer';
+ import { DataManipulator } from './DataManipulator';
+ import './Graph.css';
+ 
++
+ interface IProps {
+   data: ServerRespond[],
+ }
+@@ -22,39 +23,44 @@ class Graph extends Component<IProps, {}> {
+     // Get element from the DOM.
+     const elem = document.getElementsByTagName('perspective-viewer')[0] as unknown as PerspectiveViewerElement;
+ 
+-    const schema = {
+-      stock: 'string',
+-      top_ask_price: 'float',
+-      top_bid_price: 'float',
+-      timestamp: 'date',
+-    };
++     const schema = {
++       price_abc: 'float',
++       price_def: 'float',
++       ratio: 'float',
++       timestamp: 'date',
++       upper_bound: 'float',
++       lower_bound: 'float',
++       trigger_alert: 'float',
++     };
+ 
+-    if (window.perspective && window.perspective.worker()) {
++    if (window.perspective) {
+       this.table = window.perspective.worker().table(schema);
+     }
+     if (this.table) {
+       // Load the `table` in the `<perspective-viewer>` DOM reference.
+-      elem.load(this.table);
+-      elem.setAttribute('view', 'y_line');
+-      elem.setAttribute('column-pivots', '["stock"]');
+-      elem.setAttribute('row-pivots', '["timestamp"]');
+-      elem.setAttribute('columns', '["top_ask_price"]');
+-      elem.setAttribute('aggregates', JSON.stringify({
+-        stock: 'distinctcount',
+-        top_ask_price: 'avg',
+-        top_bid_price: 'avg',
+-        timestamp: 'distinct count',
++       elem.load(this.table);
++       elem.setAttribute('view', 'y_line');
++       elem.setAttribute('row-pivots', '["timestamp"]');
++       elem.setAttribute('columns', '["ratio", "lower_bound", "upper_bound", "trigger_alert"]');
++       elem.setAttribute('aggregates', JSON.stringify({
++         price_abc: 'avg',
++         price_def: 'avg',
++         timestamp: 'distinct count',
++         upper_bound: 'avg',
++         lower_bound: 'avg',
++         trigger_alert: 'avg',
+       }));
+     }
+   }
+ 
+-  componentDidUpdate() {
+-    if (this.table) {
+-      this.table.update(
+-        DataManipulator.generateRow(this.props.data),
+-      );
+-    }
+-  }
+-}
++   componentDidUpdate() {
++     if (this.table) {
++       this.table.update([
++         DataManipulator.generateRow(this.props.data),
++
++       ]);
++     }
++   }
++ }
+ 
+ export default Graph;
+-- 
+2.40.0.windows.1
+
